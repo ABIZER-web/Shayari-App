@@ -1,10 +1,9 @@
 import { auth } from './firebase';
 
-// The ONLY email allowed to be Admin
-export const ADMIN_EMAIL = "abizersaifee5253@gmail.com";
+// Get the email from the hidden environment variable
+const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL;
 
 export const isAdmin = (username) => {
-  // We ignore the 'username' param and check the real authenticated email
   const user = auth.currentUser;
   
   // Return TRUE only if user is logged in AND email matches exactly

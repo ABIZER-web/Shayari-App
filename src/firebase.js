@@ -3,17 +3,18 @@ import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
-import { getStorage } from "firebase/storage"; // <--- ADD THIS
+import { getStorage } from "firebase/storage"; 
 
 // Your web app's Firebase configuration
+// NOW FULLY SECURE: All values read from .env
 const firebaseConfig = {
-  apiKey: "AIzaSyBZMVC4ZV6dem5ncaj40YyWv0Zv3Ee7kMk",
-  authDomain: "shayari-app-9044b.firebaseapp.com",
-  projectId: "shayari-app-9044b",
-  storageBucket: "shayari-app-9044b.firebasestorage.app",
-  messagingSenderId: "938990595238",
-  appId: "1:938990595238:web:4de70a4dd285e689981867",
-  measurementId: "G-YFTM8TNGFH"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase
@@ -23,4 +24,6 @@ const analytics = getAnalytics(app);
 // Initialize and Export Services
 export const db = getFirestore(app);
 export const auth = getAuth(app);
-export const storage = getStorage(app); // <--- ADD THIS (Exports 'storage' so ProfilePage can use it)
+export const storage = getStorage(app); 
+
+export default app;
