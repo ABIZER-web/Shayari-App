@@ -5,6 +5,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { motion, AnimatePresence } from 'framer-motion'; 
 
+// Import Components
 import Dashboard from './components/Dashboard';
 import ShayariFeed from './components/ShayariFeed';
 import PostShayari from './components/PostShayari';
@@ -13,6 +14,7 @@ import Login from './components/Login';
 import ProfilePage from './components/ProfilePage';
 import Notifications from './components/Notifications';
 import SinglePostView from './components/SinglePostView'; 
+import SettingsModal from './components/SettingsModal';
 
 // --- ANIMATION VARIANTS ---
 const pageVariants = {
@@ -39,11 +41,21 @@ function App() {
   const [history, setHistory] = useState([]);
   const [hasUnread, setHasUnread] = useState(false);
 
+  // Settings Modal State
+  const [showSettings, setShowSettings] = useState(false);
+
   // --- PERSISTENCE ---
   useEffect(() => {
     localStorage.setItem('shayari_current_view', view);
     if (viewingProfile) localStorage.setItem('shayari_last_profile', viewingProfile);
   }, [view, viewingProfile]);
+
+  // --- PREVENT SCROLL RESTORATION ON REFRESH ---
+  useEffect(() => {
+    if ('scrollRestoration' in window.history) {
+      window.history.scrollRestoration = 'manual';
+    }
+  }, []);
 
   // --- NOTIFICATIONS ---
   useEffect(() => {
@@ -118,7 +130,17 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50/50 font-sans text-gray-900 relative overflow-x-hidden">
       
-      {/* RESPONSIVE BACKGROUND */}
+      {/* Settings Modal */}
+      {showSettings && (
+        <SettingsModal 
+          isOpen={showSettings} 
+          onClose={() => setShowSettings(false)} 
+          currentUser={currentUser}
+          onPostClick={handleOpenPost}
+        />
+      )}
+
+      {/* BACKGROUND SHAPES */}
       <div className="fixed inset-0 w-full h-full -z-10 pointer-events-none overflow-hidden">
         <motion.div 
           animate={{ scale: [1, 1.1, 1], rotate: [0, 5, -5, 0] }}
@@ -137,69 +159,73 @@ function App() {
         ></motion.div>
       </div>
 
-      {/* HEADER (Sticky & Full Width) */}
-      {view !== 'profile' && view !== 'singlePost' && (
+      {/* --- HEADER (FULL WIDTH) --- */}
+      {view !== 'singlePost' && (
         <motion.div 
           initial={{ y: -50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-100 shadow-sm transition-all"
+          className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-xl border-b border-gray-100 shadow-sm transition-all"
         >
-          <div className="w-full px-4 md:px-8 lg:px-12 py-3 flex justify-between items-center">
+          {/* Main Navbar Container */}
+          <div className="w-full px-6 md:px-10 py-2 flex justify-between items-center">
             
-            {/* Logo */}
-            <div className="flex items-center gap-2 cursor-pointer group" onClick={() => handleTabChange('home')}>
+            {/* 1. Left: Logo Image Only (BIGGER NOW) */}
+            <div className="flex items-center cursor-pointer" onClick={() => handleTabChange('home')}>
                 <motion.img 
                   whileHover={{ scale: 1.05 }}
-                  src="../logo.png" alt="Logo" className="h-8 md:h-10 w-auto object-contain drop-shadow-sm" 
+                  src="/logo.png" 
+                  alt="Logo" 
+                  // CHANGED: Increased height to h-16 (mobile) and h-20 (desktop)
+                  className="h-16 md:h-20 w-auto object-contain drop-shadow-sm" 
                 />
-                <span className="hidden sm:block font-bold text-xl bg-gradient-to-r from-indigo-600 to-pink-500 bg-clip-text text-transparent font-serif">
-                </span>
             </div>
             
-            {/* Desktop/Tablet Navigation */}
-            <div className="hidden md:flex items-center gap-4 lg:gap-8">
+            {/* 2. Center: Desktop Navigation */}
+            <div className="hidden md:flex items-center gap-6">
                <DesktopNavLink icon={Home} label="Home" isActive={view === 'home'} onClick={() => handleTabChange("home")} />
                <DesktopNavLink icon={Search} label="Explore" isActive={view === 'explore'} onClick={() => handleTabChange("explore")} />
                <DesktopNavLink icon={PlusSquare} label="Create" isActive={view === 'post'} onClick={() => handleTabChange("post")} />
             </div>
 
-            {/* Right Actions */}
-            <div className="flex gap-3 md:gap-4 items-center">
+            {/* 3. Right: Bell, Avatar, Logout */}
+            <div className="flex gap-4 items-center">
+              {/* Notification Bell */}
               <motion.button 
                 whileTap={{ scale: 0.9 }}
-                onClick={() => handleTabChange('notifications')}
-                className={`p-2 rounded-full transition relative ${view === 'notifications' ? 'bg-black text-white' : 'bg-gray-100 text-gray-600 hover:bg-white border border-transparent hover:border-gray-200'}`}
+                onClick={() => setShowSettings(true)}
+                className={`p-2.5 rounded-full transition relative hover:bg-gray-100 text-gray-600 border border-transparent hover:border-gray-200`}
               >
-                <Bell size={20} />
-                {hasUnread && <span className="absolute top-1 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border border-white animate-pulse"></span>}
+                <Bell size={22} />
+                {hasUnread && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white animate-pulse"></span>}
               </motion.button>
 
+              {/* Profile Avatar (No Text) */}
               <motion.button 
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
                 onClick={() => handleOpenProfile(currentUser)}
-                className="flex items-center gap-2 text-sm font-bold text-gray-700 bg-white px-2 py-1 md:px-3 md:py-1.5 rounded-full border border-gray-200 hover:shadow-md transition"
+                className="relative"
               >
-                <span className="hidden md:inline max-w-[100px] truncate">@{currentUser}</span>
-                <div className="w-7 h-7 bg-gradient-to-tr from-indigo-500 to-pink-500 rounded-full flex items-center justify-center text-white text-[10px] font-bold">
+                <div className="w-9 h-9 bg-gradient-to-tr from-indigo-500 to-pink-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-md">
                   {currentUser[0].toUpperCase()}
                 </div>
               </motion.button>
               
-              <button onClick={handleLogout} className="hidden md:block text-gray-400 hover:text-red-500 transition p-1">
-                  <LogOut size={20} />
+              {/* Logout Button */}
+              <button onClick={handleLogout} className="hidden md:block text-gray-400 hover:text-red-500 transition p-2 hover:bg-red-50 rounded-full">
+                  <LogOut size={22} />
               </button>
             </div>
           </div>
         </motion.div>
       )}
 
-      {/* --- MAIN CONTENT CONTAINER (DYNAMIC WIDTH) --- */}
+      {/* --- MAIN CONTENT CONTAINER --- */}
       <div 
-        className={`mx-auto pb-24 md:pb-8 min-h-screen relative z-0 transition-all duration-300 ease-in-out
-          ${view === 'explore' 
-            ? 'w-full px-2 md:px-6' // Explore: Full width with padding
-            : 'w-full max-w-lg md:max-w-2xl lg:max-w-4xl px-4' // Others: Centered Column
+        className={`mx-auto pt-24 md:pb-8 min-h-screen relative z-0 transition-all duration-300 ease-in-out
+          ${(view === 'explore' || view === 'profile') 
+            ? 'w-full px-2 md:px-6' 
+            : 'w-full max-w-lg md:max-w-2xl lg:max-w-4xl px-4'
           }`}
       > 
         <AnimatePresence mode="wait">
@@ -210,7 +236,7 @@ function App() {
                 <div className="flex gap-6">
                     <div className="flex-1"><ShayariFeed onProfileClick={handleOpenProfile} /></div>
                     <div className="hidden lg:block w-80 shrink-0">
-                        <div className="sticky top-24 bg-white/50 backdrop-blur-sm p-4 rounded-3xl border border-white/50 shadow-sm">
+                        <div className="sticky top-28 bg-white/50 backdrop-blur-sm p-4 rounded-3xl border border-white/50 shadow-sm">
                             <h3 className="font-bold text-gray-500 text-xs uppercase tracking-wider mb-4">Suggested for you</h3>
                             <p className="text-sm text-gray-400 italic">Coming soon...</p>
                         </div>
@@ -232,15 +258,15 @@ function App() {
               </motion.div>
             )}
 
-            {view === "notifications" && (
-              <motion.div key="notifications" initial="initial" animate="in" exit="out" variants={pageVariants} transition={pageTransition} className="pt-4 max-w-2xl mx-auto">
-                <Notifications currentUser={currentUser} onPostClick={handleOpenPost} onProfileClick={handleOpenProfile} />
-              </motion.div>
-            )}
-
             {view === "profile" && (
               <motion.div key="profile" initial="initial" animate="in" exit="out" variants={pageVariants} transition={pageTransition} className="pt-0 md:pt-4">
-                <ProfilePage profileUser={viewingProfile} currentUser={currentUser} onBack={handleBack} onLogout={handleLogout} onPostClick={handleOpenPost} />
+                <ProfilePage 
+                  profileUser={viewingProfile} 
+                  currentUser={currentUser} 
+                  onBack={handleBack} 
+                  onLogout={handleLogout}
+                  onPostClick={handleOpenPost} 
+                />
               </motion.div>
             )}
 

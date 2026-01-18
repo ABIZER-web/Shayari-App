@@ -1,23 +1,40 @@
 import { useState, useEffect } from 'react';
-import { X, Lock, Activity, Heart, Image as ImageIcon, ExternalLink, Loader2, Mail } from 'lucide-react';
-import { db, auth } from '../firebase'; // Import auth
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { sendPasswordResetEmail } from 'firebase/auth'; // Import reset function
+import { X, Lock, Activity, Heart, Image as ImageIcon, ExternalLink, Loader2, Mail, ShieldAlert, CheckCircle } from 'lucide-react';
+import { db, auth } from '../firebase'; 
+import { collection, query, where, getDocs, doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { sendPasswordResetEmail, deleteUser } from 'firebase/auth'; 
+import { isAdmin } from '../adminConfig'; // Import Admin check
 
 const SettingsModal = ({ isOpen, onClose, currentUser, onPostClick }) => {
   const [activeTab, setActiveTab] = useState('activity');
   const [likedPosts, setLikedPosts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [resetMessage, setResetMessage] = useState("");
+  
+  // Admin & Delete Account State
+  const [allowUserDelete, setAllowUserDelete] = useState(true);
+  const [loadingDelete, setLoadingDelete] = useState(false);
+  const isSystemAdmin = isAdmin(currentUser);
 
-  // Reset tab when opening
+  // --- INITIAL DATA FETCH ---
   useEffect(() => {
     if (isOpen) {
         setActiveTab('activity');
         fetchLikedPosts();
         setResetMessage("");
+        fetchGlobalSettings();
     }
   }, [isOpen]);
+
+  const fetchGlobalSettings = async () => {
+    const docRef = doc(db, "app_settings", "config");
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+        setAllowUserDelete(docSnap.data().allowUserDelete);
+    } else {
+        await setDoc(docRef, { allowUserDelete: true });
+    }
+  };
 
   const fetchLikedPosts = async () => {
     setLoading(true);
@@ -30,6 +47,7 @@ const SettingsModal = ({ isOpen, onClose, currentUser, onPostClick }) => {
         const snapshot = await getDocs(q);
         const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
+        // Deduplicate posts based on postId
         const uniquePostsMap = new Map();
         history.forEach(item => {
             if(item.postId) uniquePostsMap.set(item.postId, item);
@@ -44,6 +62,8 @@ const SettingsModal = ({ isOpen, onClose, currentUser, onPostClick }) => {
     }
     setLoading(false);
   };
+
+  // --- HANDLERS ---
 
   const handlePasswordReset = async () => {
     if (!auth.currentUser || !auth.currentUser.email) {
@@ -60,6 +80,35 @@ const SettingsModal = ({ isOpen, onClose, currentUser, onPostClick }) => {
     }
   };
 
+  const toggleDeletePermission = async () => {
+    const newValue = !allowUserDelete;
+    setAllowUserDelete(newValue);
+    await setDoc(doc(db, "app_settings", "config"), { allowUserDelete: newValue }, { merge: true });
+  };
+
+  const handleDeleteMyAccount = async () => {
+    if (!window.confirm("ARE YOU SURE? This cannot be undone. All your data will be lost.")) return;
+    
+    setLoadingDelete(true);
+    try {
+        // 1. Delete user doc from Firestore
+        await deleteDoc(doc(db, "users", currentUser));
+        
+        // 2. Delete Authentication User
+        const user = auth.currentUser;
+        if (user) {
+            await deleteUser(user);
+            alert("Account deleted.");
+            window.location.reload(); 
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error: Requires recent login. Please logout and login again, then try.");
+    } finally {
+        setLoadingDelete(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -68,6 +117,7 @@ const SettingsModal = ({ isOpen, onClose, currentUser, onPostClick }) => {
       
       <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden relative z-10 flex flex-col max-h-[85vh]">
         
+        {/* Header */}
         <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-20">
             <h2 className="text-xl font-bold font-serif text-gray-800">Settings</h2>
             <button onClick={onClose} className="p-2 bg-gray-50 hover:bg-gray-100 rounded-full transition">
@@ -75,7 +125,8 @@ const SettingsModal = ({ isOpen, onClose, currentUser, onPostClick }) => {
             </button>
         </div>
 
-        <div className="flex p-2 gap-2 bg-gray-50 mx-5 mt-5 rounded-2xl">
+        {/* Tabs */}
+        <div className="flex p-2 gap-2 bg-gray-50 mx-5 mt-5 rounded-2xl flex-shrink-0">
             <button 
                 onClick={() => setActiveTab('activity')}
                 className={`flex-1 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${activeTab === 'activity' ? 'bg-white text-black shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
@@ -90,7 +141,10 @@ const SettingsModal = ({ isOpen, onClose, currentUser, onPostClick }) => {
             </button>
         </div>
 
+        {/* Content Area */}
         <div className="p-5 overflow-y-auto flex-1 custom-scrollbar">
+            
+            {/* --- ACTIVITY TAB --- */}
             {activeTab === 'activity' && (
                 <div className="space-y-4">
                     <div className="flex items-center justify-between mb-2">
@@ -133,8 +187,11 @@ const SettingsModal = ({ isOpen, onClose, currentUser, onPostClick }) => {
                 </div>
             )}
 
+            {/* --- SECURITY TAB --- */}
             {activeTab === 'security' && (
-                <div className="text-center py-6 space-y-6">
+                <div className="text-center space-y-6">
+                    
+                    {/* Email & Password Section */}
                     <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100">
                         <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
                             <Mail size={30} className="text-blue-600" />
@@ -143,24 +200,63 @@ const SettingsModal = ({ isOpen, onClose, currentUser, onPostClick }) => {
                         <p className="text-sm text-gray-500 mb-4">
                             Logged in as: <span className="font-bold text-gray-700">{auth.currentUser?.email}</span>
                         </p>
+                        
+                        <div className="pt-4 border-t border-gray-200">
+                            <p className="text-xs text-gray-500 mb-3">
+                                Need to change your password?
+                            </p>
+                            <button 
+                                onClick={handlePasswordReset}
+                                className="bg-black text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-gray-800 transition shadow-lg w-full"
+                            >
+                                Send Reset Link
+                            </button>
+                            {resetMessage && (
+                                <div className={`mt-3 text-xs font-medium px-3 py-2 rounded-lg ${resetMessage.includes("Error") ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
+                                    {resetMessage}
+                                </div>
+                            )}
+                        </div>
                     </div>
 
-                    <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100">
-                        <h3 className="font-bold text-gray-800 mb-2">Change Password</h3>
-                        <p className="text-xs text-gray-500 mb-4">
-                            We will send a link to your email address to reset your password.
-                        </p>
-                        
-                        <button 
-                            onClick={handlePasswordReset}
-                            className="bg-black text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-gray-800 transition shadow-lg w-full"
-                        >
-                            Send Reset Link
-                        </button>
+                    {/* ADMIN CONTROLS (Only visible to Admin) */}
+                    {isSystemAdmin && (
+                        <div className="bg-indigo-50 p-5 rounded-3xl border border-indigo-100 text-left">
+                            <h4 className="font-bold text-indigo-900 text-sm mb-3 flex items-center gap-2">
+                                <Lock size={16}/> Admin Controls
+                            </h4>
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm text-indigo-800 font-medium">Allow users to delete accounts?</span>
+                                <button 
+                                    onClick={toggleDeletePermission}
+                                    className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${allowUserDelete ? 'bg-green-500' : 'bg-gray-300'}`}
+                                >
+                                    <div className={`w-4 h-4 bg-white rounded-full shadow-md transform transition-transform duration-300 ${allowUserDelete ? 'translate-x-6' : 'translate-x-0'}`} />
+                                </button>
+                            </div>
+                            <p className="text-xs text-indigo-600/70 mt-2">
+                                {allowUserDelete ? "Users can currently delete their own accounts." : "Users are blocked from deleting accounts."}
+                            </p>
+                        </div>
+                    )}
 
-                        {resetMessage && (
-                            <div className={`mt-3 text-xs font-medium px-3 py-2 rounded-lg ${resetMessage.includes("Error") ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
-                                {resetMessage}
+                    {/* DANGER ZONE (Delete Account) */}
+                    <div className="pt-2">
+                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Danger Zone</h4>
+                        
+                        {allowUserDelete || isSystemAdmin ? (
+                            <button 
+                                onClick={handleDeleteMyAccount} 
+                                disabled={loadingDelete}
+                                className="w-full flex items-center justify-center gap-2 bg-red-50 text-red-600 border border-red-100 py-3 rounded-xl font-bold hover:bg-red-100 transition"
+                            >
+                                <ShieldAlert size={18} />
+                                {loadingDelete ? "Processing..." : "Delete My Account"}
+                            </button>
+                        ) : (
+                            <div className="bg-gray-50 border border-gray-200 text-gray-500 p-3 rounded-xl text-center text-sm">
+                                <Lock size={16} className="mx-auto mb-1 opacity-50"/>
+                                Account deletion is temporarily disabled by Admin.
                             </div>
                         )}
                     </div>

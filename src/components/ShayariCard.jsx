@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
-import { doc, updateDoc, increment, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, serverTimestamp, getDocs, where } from 'firebase/firestore';
-import { Heart, MessageCircle, Bookmark, Trash2, Share2, MoreHorizontal, Download, Phone, X } from 'lucide-react'; 
+import { doc, updateDoc, increment, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, serverTimestamp, getDocs, where, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { Heart, MessageCircle, Bookmark, Trash2, Share2, MoreHorizontal, Download, Phone, X, Instagram, Twitter } from 'lucide-react'; 
 import { motion, AnimatePresence } from 'framer-motion';
+import { isAdmin } from '../adminConfig'; // <--- IMPORT ADMIN CHECK
 
 const ShayariCard = ({ shayari, onProfileClick }) => {
   const [likes, setLikes] = useState(shayari.likes || 0);
@@ -23,8 +24,12 @@ const ShayariCard = ({ shayari, onProfileClick }) => {
   const shareMenuRef = useRef(null);
 
   const currentUser = localStorage.getItem('shayari_user');
-  const isAdmin = currentUser === 'admin';
+  
+  // --- ADMIN & PERMISSION LOGIC ---
+  const isSystemAdmin = isAdmin(currentUser); // Check if current user is the "permanent admin"
   const isAuthor = currentUser === shayari.author;
+  const canDeletePost = isSystemAdmin || isAuthor; // Admin OR Author can delete post
+
   const LIKE_KEY = `liked_${shayari.id}_${currentUser}`;
   const SAVE_STORAGE_KEY = `saved_posts_${currentUser}`;
 
@@ -141,9 +146,9 @@ const ShayariCard = ({ shayari, onProfileClick }) => {
     setLoadingLikers(false);
   };
 
-  /// TO THIS:
-const handlePostComment = async () => {
-  if (!newComment.trim()) return; // <--- New line (removed filter check)
+  // --- HANDLE POST COMMENT (No Filter) ---
+  const handlePostComment = async () => {
+    if (!newComment.trim()) return;
     
     const commentData = { 
         text: newComment, 
@@ -153,8 +158,10 @@ const handlePostComment = async () => {
     
     setNewComment(""); 
 
+    // Add comment to subcollection
     await addDoc(collection(db, "shayaris", shayari.id, "comments"), commentData);
 
+    // Notify author
     if (currentUser !== shayari.author) {
         await addDoc(collection(db, "notifications"), {
           toUser: shayari.author, 
@@ -169,15 +176,22 @@ const handlePostComment = async () => {
     }
   };
 
+  // --- HANDLE DELETE COMMENT (Admin or Comment Author) ---
   const handleDeleteComment = async (commentId) => {
     if (window.confirm("Delete this comment?")) {
         await deleteDoc(doc(db, "shayaris", shayari.id, "comments", commentId));
     }
   };
 
-  const handleDelete = async () => {
-    if (window.confirm("Delete this post?")) {
-      try { await deleteDoc(doc(db, "shayaris", shayari.id)); } catch (error) { console.error("Error deleting", error); }
+  // --- HANDLE DELETE POST (Admin or Post Author) ---
+  const handleDeletePost = async () => {
+    if (window.confirm("Delete this post permanently?")) {
+      try { 
+          await deleteDoc(doc(db, "shayaris", shayari.id)); 
+      } catch (error) { 
+          console.error("Error deleting", error); 
+          alert("Failed to delete post.");
+      }
     }
   };
 
@@ -243,14 +257,17 @@ const handlePostComment = async () => {
           </div>
         </div>
 
-        {(isAdmin || isAuthor) ? (
-          <button onClick={handleDelete} className="text-gray-400 hover:text-red-500 transition p-2"><Trash2 size={18} /></button>
+        {/* DELETE BUTTON (Visible to Admin OR Author) */}
+        {canDeletePost ? (
+          <button onClick={handleDeletePost} className="text-gray-300 hover:text-red-500 transition p-2">
+            <Trash2 size={18} />
+          </button>
         ) : (
           <MoreHorizontal size={18} className="text-gray-300" />
         )}
       </div>
 
-      {/* CONTENT (Responsive Text Size: text-xl on mobile, text-2xl on desktop) */}
+      {/* CONTENT */}
       <div className="bg-gradient-to-b from-white to-gray-50/50 min-h-[200px] flex flex-col justify-center relative">
         {shayari.image && <img src={shayari.image} alt="Post" className="w-full h-auto max-h-[500px] object-cover" />}
         {shayari.content && (!shayari.image || !shayari.isTextOnImage) && (
@@ -326,7 +343,8 @@ const handlePostComment = async () => {
                   </span>
                   <span className="text-gray-700 whitespace-pre-wrap leading-relaxed">{c.text}</span>
                 </div>
-                {(isAdmin || c.username === currentUser) && (
+                {/* DELETE COMMENT (Visible to Admin OR Comment Author) */}
+                {(isSystemAdmin || c.username === currentUser) && (
                     <button onClick={() => handleDeleteComment(c.id)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"><X size={14} /></button>
                 )}
               </div>
